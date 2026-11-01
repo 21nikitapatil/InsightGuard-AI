@@ -1,0 +1,38 @@
+import pandas as pd
+
+from insightguard.analytics import (
+    build_data_quality_report,
+    execute_analysis_plan,
+    validate_analysis_plan,
+)
+from insightguard.data import make_demo_data
+
+
+def test_demo_data_has_expected_columns():
+    df = make_demo_data()
+    assert {"product", "region", "revenue", "profit", "order_date"}.issubset(df.columns)
+    assert len(df) == 240
+
+
+def test_quality_report_counts_missing_values():
+    df = pd.DataFrame({"a": [1, None, 1], "b": ["x", "y", "x"]})
+    report = build_data_quality_report(df)
+    assert report["missing_cells"] == 1
+    assert report["duplicate_rows"] == 1
+
+
+def test_plan_validation_rejects_unknown_column():
+    df = pd.DataFrame({"revenue": [10, 20]})
+    plan = {"operation": "sum", "metric": "profit", "group_by": None, "filters": [], "top_n": 10}
+    _, error = validate_analysis_plan(plan, df)
+    assert error is not None
+
+
+def test_grouped_sum_is_calculated_from_source_data():
+    df = pd.DataFrame({"product": ["A", "A", "B"], "revenue": [10, 15, 40]})
+    plan = {"operation": "sum", "metric": "revenue", "group_by": "product", "filters": [], "top_n": 10}
+    safe_plan, error = validate_analysis_plan(plan, df)
+    assert error is None
+    result = execute_analysis_plan(df, safe_plan)
+    assert result["table"].iloc[0]["product"] == "B"
+    assert result["table"].iloc[0]["revenue"] == 40
